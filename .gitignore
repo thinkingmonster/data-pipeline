@@ -1,0 +1,6 @@
+# Ignore everything at the lab root by default.
+/*
+
+# Re-allow only what we want tracked.
+!/.gitignore
+!/days/

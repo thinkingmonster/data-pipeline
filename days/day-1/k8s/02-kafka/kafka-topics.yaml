@@ -1,0 +1,63 @@
+# Declarative topic management — the Strimzi Topic Operator reconciles these
+# CRs into actual Kafka topics. Never use kafka-topics.sh against this cluster.
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: analytics
+  namespace: data-pipeline
+  labels:
+    strimzi.io/cluster: data-pipeline
+spec:
+  partitions: 3
+  replicas: 3
+  config:
+    retention.ms: 604800000        # 7 days
+    min.insync.replicas: 2
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: engagement-topic
+  namespace: data-pipeline
+  labels:
+    strimzi.io/cluster: data-pipeline
+spec:
+  partitions: 3
+  replicas: 3
+  config:
+    retention.ms: 604800000
+    min.insync.replicas: 2
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: webrtc-analytics
+  namespace: data-pipeline
+  labels:
+    strimzi.io/cluster: data-pipeline
+spec:
+  partitions: 3
+  replicas: 3
+  config:
+    retention.ms: 604800000
+    min.insync.replicas: 2
+---
+# The Schema Registry's source-of-truth topic. Must be compacted (not deleted),
+# single partition (ordering of schema commits matters), RF=3 for durability.
+#
+# The CR name can't start with `_` (RFC 1123), so we use `schemas-registry`
+# and force the underlying Kafka topic name to `_schemas` via spec.topicName.
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: schemas-registry
+  namespace: data-pipeline
+  labels:
+    strimzi.io/cluster: data-pipeline
+spec:
+  topicName: _schemas
+  partitions: 1
+  replicas: 3
+  config:
+    cleanup.policy: compact
+    min.insync.replicas: 2
