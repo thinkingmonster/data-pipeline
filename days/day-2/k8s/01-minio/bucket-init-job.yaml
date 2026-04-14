@@ -1,0 +1,40 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: minio-bucket-init
+  namespace: data-pipeline
+spec:
+  backoffLimit: 4
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: mc
+          image: minio/mc:RELEASE.2024-10-08T09-37-26Z
+          envFrom:
+            - secretRef:
+                name: minio-credentials
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+              echo "Waiting for MinIO API..."
+              until mc alias set local http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null 2>&1; do
+                sleep 2
+              done
+              echo "MinIO reachable. Creating bucket layout..."
+              mc mb --ignore-existing local/analytics-lab
+              mc mb --ignore-existing local/analytics-lab/bronze
+              mc mb --ignore-existing local/analytics-lab/silver
+              mc mb --ignore-existing local/analytics-lab/checkpoints
+              mc anonymous set none local/analytics-lab
+              echo "Done. Bucket layout:"
+              mc ls --recursive local/analytics-lab || true

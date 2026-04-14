@@ -33,6 +33,7 @@ make verify-minio
 
 # 3. Phase 1b — Strimzi operator + Kafka cluster + topics
 make kafka
+make kafka-topics
 make verify-kafka
 
 # 4. Phase 1c — Schema Registry
@@ -100,8 +101,3 @@ day-1/
     └── verify-schema-registry.sh
 ```
 
----
-
-## When you're done
-
-Draft the Day 1 blog post at [../../blog-series/day-1-foundation.md](../../blog-series/) covering Phases 0 + 1. Then snapshot this folder as `days/day-2/` and start Phase 2 (mock GAP + classroom simulator).
