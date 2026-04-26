@@ -1,0 +1,123 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hive-metastore
+  namespace: data-pipeline
+  labels:
+    app: hive-metastore
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hive-metastore
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: hive-metastore
+    spec:
+      # apache/hive:4.0.0 does NOT bundle the Postgres JDBC driver. The
+      # entrypoint's schematool -initOrUpgradeSchema call therefore fails with
+      # "ClassNotFoundException: org.postgresql.Driver". We use an initContainer
+      # to fetch the driver jar once at pod start; the main container copies it
+      # into $HIVE_HOME/lib so both schematool and the runtime pick it up.
+      #
+      # The image's default USER is `hive` (non-root), which makes /opt/hive/lib
+      # read-only. Running as root is acceptable in this lab (no workload
+      # isolation concerns) and keeps the init flow simple.
+      securityContext:
+        runAsUser: 0
+      initContainers:
+        - name: fetch-postgres-jdbc
+          image: curlimages/curl:8.10.1
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              JAR=/drivers/postgresql.jar
+              if [ ! -f "$JAR" ]; then
+                curl -fsSL -o "$JAR" \
+                  https://jdbc.postgresql.org/download/postgresql-42.7.4.jar
+              fi
+              ls -la /drivers/
+          volumeMounts:
+            - name: drivers
+              mountPath: /drivers
+      containers:
+        - name: hive-metastore
+          image: apache/hive:4.0.0
+          # SERVICE_NAME=metastore makes the image's entrypoint launch the
+          # standalone metastore. Setting DB_DRIVER=postgres directs schematool
+          # (which the entrypoint calls before starting the service) at the
+          # right backend. -initOrUpgradeSchema is idempotent in Hive 4, so we
+          # do not need a separate init Job.
+          env:
+            - name: SERVICE_NAME
+              value: metastore
+            - name: DB_DRIVER
+              value: postgres
+            - name: VERBOSE
+              value: "true"
+            - name: HIVE_CUSTOM_CONF_DIR
+              value: /hive-conf
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: s3a-credentials
+                  key: AWS_ACCESS_KEY_ID
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: s3a-credentials
+                  key: AWS_SECRET_ACCESS_KEY
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+              # Drop the fetched JDBC driver into Hive's lib dir so both
+              # schematool (classpath: $HIVE_HOME/lib/*) and the running
+              # metastore can load org.postgresql.Driver.
+              cp /drivers/postgresql.jar /opt/hive/lib/postgresql.jar
+              # Stage hive-site.xml where HIVE_CUSTOM_CONF_DIR points; the
+              # entrypoint symlinks it into $HIVE_HOME/conf/.
+              cp /hive-site-cm/hive-site.xml /hive-conf/hive-site.xml
+              exec /entrypoint.sh
+          ports:
+            - name: thrift
+              containerPort: 9083
+          readinessProbe:
+            tcpSocket:
+              port: 9083
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            failureThreshold: 12
+          livenessProbe:
+            tcpSocket:
+              port: 9083
+            initialDelaySeconds: 180
+            periodSeconds: 30
+          volumeMounts:
+            - name: drivers
+              mountPath: /drivers
+            - name: hive-site-cm
+              mountPath: /hive-site-cm
+            - name: hive-conf
+              mountPath: /hive-conf
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2"
+              memory: "2Gi"
+      volumes:
+        - name: drivers
+          emptyDir: {}
+        - name: hive-site-cm
+          configMap:
+            name: hive-metastore-site
+        - name: hive-conf
+          emptyDir: {}

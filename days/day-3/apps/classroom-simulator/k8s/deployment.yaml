@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: classroom-simulator
+  namespace: data-pipeline
+  labels:
+    app: classroom-simulator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: classroom-simulator
+  template:
+    metadata:
+      labels:
+        app: classroom-simulator
+    spec:
+      containers:
+        - name: simulator
+          image: classroom-simulator:day2
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: GAP_URL
+              value: http://mock-gap:8000
+            - name: EVENTS_PER_SECOND
+              value: "10"
+            - name: CONCURRENT_MEETINGS
+              value: "3"
+            - name: MEETING_DURATION_SECONDS
+              value: "120"
+            - name: STUDENTS_PER_MEETING
+              value: "5"
+            # 0 = run forever. Override for bounded experiments.
+            - name: DURATION_SECONDS
+              value: "0"
+            # Zone 1 gets 50%, zone 5 gets 3% — realistic skew.
+            - name: ZONE_WEIGHTS
+              value: "0.5,0.25,0.15,0.07,0.03"
+            - name: LOG_LEVEL
+              value: INFO
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
